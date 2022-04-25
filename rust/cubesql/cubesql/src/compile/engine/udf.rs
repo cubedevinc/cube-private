@@ -5,10 +5,10 @@ use chrono::{Duration, NaiveDateTime};
 use datafusion::{
     arrow::{
         array::{
-            Array, ArrayRef, BooleanArray, BooleanBuilder, Float64Array, GenericStringArray,
-            Int64Array, Int64Builder, IntervalDayTimeArray, IntervalDayTimeBuilder, ListBuilder,
-            PrimitiveArray, PrimitiveBuilder, StringArray, StringBuilder, TimestampNanosecondArray,
-            UInt32Builder,
+            Array, ArrayBuilder, ArrayRef, BooleanArray, BooleanBuilder, Float64Array,
+            GenericStringArray, Int64Array, Int64Builder, IntervalDayTimeArray,
+            IntervalDayTimeBuilder, ListArray, ListBuilder, PrimitiveArray, PrimitiveBuilder,
+            StringArray, StringBuilder, StructBuilder, TimestampNanosecondArray, UInt32Builder,
         },
         compute::cast,
         datatypes::{
@@ -1344,6 +1344,74 @@ pub fn create_generate_series_udtf(with_catalog_prefix: bool) -> TableUDF {
                     DataType::Float64,
                 ]),
             ],
+            Volatility::Immutable,
+        ),
+        &return_type,
+        &fun,
+    )
+}
+
+pub fn create_pg_expandarray_udtf() -> TableUDF {
+    let fields = vec![
+        Field::new("x", DataType::Int64, true),
+        Field::new("n", DataType::Int64, false),
+    ];
+    let fields_cloned = fields.clone();
+
+    let fun = make_table_function(move |args: &[ArrayRef]| {
+        let arr = &args[0].as_any().downcast_ref::<ListArray>();
+        if arr.is_none() {
+            return Err(DataFusionError::Execution(format!("Unsupported type")));
+        }
+        let arr = arr.unwrap();
+
+        let mut value_builder = Int64Builder::new(1);
+        let mut index_builder = Int64Builder::new(1);
+
+        let mut section_sizes: Vec<usize> = Vec::new();
+        let mut total_count: usize = 0;
+
+        for i in 0..arr.len() {
+            let values = arr.value(i);
+            let values_arr = values.as_any().downcast_ref::<Int64Array>();
+            if values_arr.is_none() {
+                return Err(DataFusionError::Execution(format!("Unsupported type")));
+            }
+            let values_arr = values_arr.unwrap();
+
+            for j in 0..values_arr.len() {
+                value_builder.append_value(values_arr.value(j)).unwrap();
+                index_builder.append_value((j + 1) as i64).unwrap();
+            }
+
+            section_sizes.push(values_arr.len());
+            total_count += values_arr.len()
+        }
+
+        let field_builders = vec![
+            Box::new(value_builder) as Box<dyn ArrayBuilder>,
+            Box::new(index_builder) as Box<dyn ArrayBuilder>,
+        ];
+
+        let mut builder = StructBuilder::new(fields.clone(), field_builders);
+        for _ in 0..total_count {
+            builder.append(true).unwrap();
+        }
+
+        Ok((Arc::new(builder.finish()) as ArrayRef, section_sizes))
+    });
+
+    let return_type: ReturnTypeFunction =
+        Arc::new(move |_| Ok(Arc::new(DataType::Struct(fields_cloned.clone()))));
+
+    TableUDF::new(
+        "information_schema._pg_expandarray",
+        &Signature::exact(
+            vec![DataType::List(Box::new(Field::new(
+                "item",
+                DataType::Int64,
+                true,
+            )))],
             Volatility::Immutable,
         ),
         &return_type,

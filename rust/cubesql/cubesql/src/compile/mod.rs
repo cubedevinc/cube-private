@@ -44,9 +44,9 @@ use self::{
         create_current_schemas_udf, create_current_user_udf, create_db_udf, create_format_type_udf,
         create_generate_series_udtf, create_if_udf, create_instr_udf, create_isnull_udf,
         create_least_udf, create_locate_udf, create_pg_datetime_precision_udf,
-        create_pg_get_expr_udf, create_pg_get_userbyid_udf, create_pg_numeric_precision_udf,
-        create_pg_numeric_scale_udf, create_time_format_udf, create_timediff_udf, create_ucase_udf,
-        create_user_udf, create_version_udf,
+        create_pg_expandarray_udtf, create_pg_get_expr_udf, create_pg_get_userbyid_udf,
+        create_pg_numeric_precision_udf, create_pg_numeric_scale_udf, create_time_format_udf,
+        create_timediff_udf, create_ucase_udf, create_user_udf, create_version_udf,
     },
     parser::parse_sql_to_statement,
 };
@@ -2287,6 +2287,7 @@ WHERE `TABLE_SCHEMA` = '{}'",
         // udtf
         ctx.register_udtf(create_generate_series_udtf(true));
         ctx.register_udtf(create_generate_series_udtf(false));
+        ctx.register_udtf(create_pg_expandarray_udtf());
 
         ctx
     }
@@ -5705,6 +5706,30 @@ mod tests {
             "pg_get_expr_2",
             execute_query(
                 "SELECT pg_catalog.pg_get_expr(adbin, adrelid, true) FROM pg_catalog.pg_attrdef;"
+                    .to_string(),
+                DatabaseProtocol::PostgreSQL
+            )
+            .await?
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_pg_expandarray_postgres() -> Result<(), CubeError> {
+        insta::assert_snapshot!(
+            "pg_expandarray_value",
+            execute_query(
+                "SELECT (information_schema._pg_expandarray(t.a)).x FROM pg_catalog.pg_class c, (SELECT ARRAY[5, 10, 15] a) t;"
+                    .to_string(),
+                DatabaseProtocol::PostgreSQL
+            )
+            .await?
+        );
+        insta::assert_snapshot!(
+            "pg_expandarray_index",
+            execute_query(
+                "SELECT (information_schema._pg_expandarray(t.a)).n FROM pg_catalog.pg_class c, (SELECT ARRAY[5, 10, 15] a) t;"
                     .to_string(),
                 DatabaseProtocol::PostgreSQL
             )
