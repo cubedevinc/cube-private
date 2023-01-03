@@ -51,7 +51,10 @@ type RequireOne<T, K extends keyof T> = {
 export class CubejsServer {
   protected readonly core: CubejsServerCore;
 
-  protected readonly config: RequireOne<CreateOptions, 'webSockets' | 'http' | 'sqlPort' | 'pgSqlPort'>;
+  protected readonly config: RequireOne<
+    CreateOptions,
+    "webSockets" | "http" | "sqlPort" | "pgSqlPort"
+  >;
 
   protected server: GracefulHttpServer | null = null;
 
@@ -61,35 +64,46 @@ export class CubejsServer {
 
   protected readonly status: ServerStatusHandler = new ServerStatusHandler();
 
-  public constructor(config: CreateOptions = {}, systemOptions?: SystemOptions) {
+  public constructor(
+    config: CreateOptions = {},
+    systemOptions?: SystemOptions
+  ) {
     this.config = {
       ...config,
-      webSockets: config.webSockets || getEnv('webSockets'),
-      sqlPort: config.sqlPort || getEnv('sqlPort'),
-      pgSqlPort: config.pgSqlPort || getEnv('pgSqlPort'),
-      sqlNonce: config.sqlNonce || getEnv('sqlNonce'),
+      webSockets: config.webSockets || getEnv("webSockets"),
+      sqlPort: config.sqlPort || getEnv("sqlPort"),
+      pgSqlPort: config.pgSqlPort || getEnv("pgSqlPort"),
+      sqlNonce: config.sqlNonce || getEnv("sqlNonce"),
       http: {
         ...config.http,
         cors: {
-          allowedHeaders: 'authorization,content-type,x-request-id',
-          ...config.http?.cors
-        }
+          allowedHeaders: "authorization,content-type,x-request-id",
+          ...config.http?.cors,
+        },
       },
     };
 
-    this.core = CubeCore.create(config, systemOptions);
+    this.core = this.createCoreInstance(config, systemOptions);
     this.server = null;
+  }
+
+  public createCoreInstance(
+    config: CreateOptions,
+    systemOptions?: SystemOptions
+  ): CubejsServerCore {
+    console.log('This log is from core');
+    return new CubejsServerCore(config, systemOptions);
   }
 
   public async listen(options: http.ServerOptions = {}) {
     try {
       if (this.server) {
-        throw new Error('CubeServer is already listening');
+        throw new Error("CubeServer is already listening");
       }
 
       const app = express();
       app.use(cors(this.config.http.cors));
-      app.use(bodyParser.json({ limit: '50mb' }));
+      app.use(bodyParser.json({ limit: "50mb" }));
 
       if (this.config.gracefulShutdown) {
         app.use(gracefulMiddleware(this.status, this.config.gracefulShutdown));
@@ -101,9 +115,9 @@ export class CubejsServer {
 
       await this.core.initApp(app);
 
-      const enableTls = getEnv('tls');
+      const enableTls = getEnv("tls");
       if (enableTls) {
-        throw new Error('CUBEJS_ENABLE_TLS has been deprecated and removed.');
+        throw new Error("CUBEJS_ENABLE_TLS has been deprecated and removed.");
       }
 
       this.server = gracefulHttp(http.createServer(options, app));
@@ -118,19 +132,19 @@ export class CubejsServer {
         await this.sqlServer.init(this.config);
       }
 
-      const PORT = getEnv('port');
+      const PORT = getEnv("port");
       await this.server.listen(PORT);
 
       return {
         app,
         port: PORT,
         server: this.server,
-        version
+        version,
       };
     } catch (e: any) {
       if (this.core.event) {
-        await this.core.event('Dev Server Fatal Error', {
-          error: (e.stack || e.message || e).toString()
+        await this.core.event("Dev Server Fatal Error", {
+          error: (e.stack || e.message || e).toString(),
         });
       }
 
@@ -168,7 +182,7 @@ export class CubejsServer {
       }
 
       if (!this.server) {
-        throw new Error('CubeServer is not started.');
+        throw new Error("CubeServer is not started.");
       }
 
       await util.promisify(this.server.close)();
@@ -177,8 +191,8 @@ export class CubejsServer {
       await this.core.releaseConnections();
     } catch (e: any) {
       if (this.core.event) {
-        await this.core.event('Dev Server Fatal Error', {
-          error: (e.stack || e.message || e).toString()
+        await this.core.event("Dev Server Fatal Error", {
+          error: (e.stack || e.message || e).toString(),
         });
       }
 
@@ -211,33 +225,27 @@ export class CubejsServer {
     try {
       const timeoutKiller = withTimeout(
         () => {
-          this.core.logger('Graceful Shutdown Timeout Kill', {
-            error: 'Unable to stop Cube.js in expected time, force kill',
+          this.core.logger("Graceful Shutdown Timeout Kill", {
+            error: "Unable to stop Cube.js in expected time, force kill",
           });
 
           process.exit(1);
         },
         // this.server.stop can be closed in this.config.gracefulShutdown, let's add 1s before kill
-        ((this.config.gracefulShutdown || 2) + 1) * 1000,
+        ((this.config.gracefulShutdown || 2) + 1) * 1000
       );
 
       this.status.shutdown();
 
-      const locks: Promise<any>[] = [
-        this.core.beforeShutdown()
-      ];
+      const locks: Promise<any>[] = [this.core.beforeShutdown()];
 
       if (this.socketServer) {
-        locks.push(
-          this.socketServer.close()
-        );
+        locks.push(this.socketServer.close());
       }
 
       if (this.server) {
         locks.push(
-          this.server.stop(
-            (this.config.gracefulShutdown || 2) * 1000
-          )
+          this.server.stop((this.config.gracefulShutdown || 2) * 1000)
         );
       }
 
@@ -251,7 +259,7 @@ export class CubejsServer {
 
       return 0;
     } catch (e: any) {
-      console.error('Fatal error during server shutting down: ');
+      console.error("Fatal error during server shutting down: ");
       console.error(e.stack || e);
 
       return 1;

@@ -187,6 +187,7 @@ export interface CreateOptions {
   scheduledRefreshTimeZones?: string[];
   scheduledRefreshContexts?: () => Promise<UserBackgroundContext[]>;
   scheduledRefreshConcurrency?: number;
+  scheduledRefreshBatchSize?: number;
   compilerCacheSize?: number;
   maxCompilerCacheKeepAlive?: number;
   updateCompilerCacheKeepAlive?: boolean;
